@@ -69,10 +69,90 @@ sizeFactors(dds) # used for technical scaling corrections
 vsd <- vst(dds)
 plotPCA(vsd, intgroup = "dex") # shows treated vs untreated samples. they separate clearly on PC1, so treatment is the strongest driver of variation.
 
-## finding the genes that cause the separation #################################
+## finding the genes that cause the separation after dex treatment #############
 
-dds <- DESeq(dds)
-res <- results(dds)
+dds <- DESeq(dds) # differential expression analysis. Fits a statistical model for every gene
+res <- results(dds) # extracting the results
+
+res
+summary(res)
+head(res)
+
+sig <- res[which(res$padj < 0.05), ] # filter significant genes
+
+nrow(sig) # number of significant genes
+
+res_sorted <- res[order(res$padj), ] # sort genes by significance
+head(res_sorted) # look at most significant genes. The genes that responded most strongly to treatment. baseMean is the average normalised expression across all samples.
+
+write.csv(
+  as.data.frame(res_sorted),
+  "Airways_project/deseq2_results.csv"
+) # created an output file to be shared with collaborators
+
+## Volcano plots ###############################################################
+
+plot(
+  res$log2FoldChange,
+  -log10(res$padj),
+  pch = 20,
+  xlab = "Log2 Fold Change",
+  ylab = "-log10 Adjusted P-value",
+  main = "Differential Expression"
+) # without colour
+
+sig <- !is.na(res$padj) & res$padj < 0.05
+
+plot(
+  res$log2FoldChange,
+  -log10(res$padj),
+  col = ifelse(sig, "red", "black"),
+  pch = 20,
+  xlab = "Log2 Fold Change",
+  ylab = "-log10 Adjusted P-value"
+) # with colour. The treatment is upregulating more genes than it is repressing, most genes a not largely affected by treatment 
+
+rownames(res_sorted)[1] # number one most significant gene
+
+plotCounts(
+  dds,
+  gene = rownames(res_sorted)[1],
+  intgroup = "dex"
+) # normalised counts of treated vs untreated for a single gene
+
+head(rowData(dds)) # gives information about the top few genes
+
+## Which biological processes are changing? ####################################
+
+head(rownames(res_sorted), 20) # identify the top 20 genes
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install("org.Hs.eg.db")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
