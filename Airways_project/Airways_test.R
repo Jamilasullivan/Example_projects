@@ -129,35 +129,122 @@ head(rownames(res_sorted), 20) # identify the top 20 genes
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
-BiocManager::install("org.Hs.eg.db")
+BiocManager::install("org.Hs.eg.db") # getting gene annotation information
 
+library(org.Hs.eg.db)
+library(AnnotationDbi)
 
+top20 <- head(rownames(res_sorted), 20) # separate the top 20 genes
 
+gene_info <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys = top20,
+  keytype = "ENSEMBL",
+  columns = c("SYMBOL", "GENENAME")
+) # change the first 20 gene names
 
+gene_info # names of the first 20 genes
 
+## Pathways enrichment analysis with DEGs ######################################
 
+# What biological pathways are overrepresented in my data?
 
+# clusterProfiler, ReactomePA or fgsea (GSEA-style ranking)
 
+# test GO biological processes, KEGG pathways, Reactome pathways
 
+sig_genes <- rownames(res)[res$padj < 0.05] # separating all significant genes
 
+converted <- bitr(sig_genes,
+                  fromType="ENSEMBL",
+                  toType="ENTREZID",
+                  OrgDb=org.Hs.eg.db) # converting all the gene IDs
 
+ego <- enrichGO(converted$ENTREZID,
+                OrgDb=org.Hs.eg.db,
+                keyType="ENTREZID",
+                ont="BP") # running enrichment analysis on all genes
 
+library(enrichplot)
 
+dotplot(ego, showCategory = 10)
+barplot(ego, showCategory = 10)
+cnetplot(ego)
 
+## GSEA analysis ###############################################################
 
+library(DESeq2)
+library(dplyr)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(enrichplot)
 
+# res = your DESeq2 results object
+res_df <- as.data.frame(res)
 
+# remove NA logFC values
+res_df <- res_df %>%
+  filter(!is.na(log2FoldChange))
 
+# rank the gene list
+gene_list <- res_df$log2FoldChange
+names(gene_list) <- rownames(res_df)
 
+# sort descending (required for GSEA)
+gene_list <- sort(gene_list, decreasing = TRUE)
 
+# clean ENSEMLE IDs 
+names(gene_list) <- gsub("\\..*", "", names(gene_list))
 
+# map genes 
+mapped <- bitr(
+  names(gene_list),
+  fromType = "ENSEMBL",
+  toType   = "ENTREZID",
+  OrgDb    = org.Hs.eg.db
+)
 
+# keep only mapped genes
+gene_list <- gene_list[mapped$ENSEMBL]
 
+# assign ENTREZ IDs as names
+names(gene_list) <- mapped$ENTREZID
 
+# remove duplicates 
+gene_list <- gene_list[!duplicated(names(gene_list))]
 
+# final safety checks
+cat("Number of genes:", length(gene_list), "\n")
+cat("Duplicates:", sum(duplicated(names(gene_list))), "\n")
+cat("Any NA values:", sum(is.na(gene_list)), "\n")
 
+# run GSEA 
+gse <- gseGO(
+  geneList     = gene_list,
+  OrgDb        = org.Hs.eg.db,
+  keyType      = "ENTREZID",
+  ont          = "BP",
+  minGSSize    = 10,
+  maxGSSize    = 500,
+  pvalueCutoff = 0.05,
+  verbose      = FALSE
+)
 
+# inspect results 
+df <- as.data.frame(gse)
 
+cat("GSEA terms found:", nrow(df), "\n")
 
+head(df)
 
+# plot results 
+# main overview plot
+dotplot(gse, showCategory = 15)
 
+# ridgeplot (nice for presentation)
+ridgeplot(gse)
+
+# single pathway enrichment curve 
+if (nrow(df) > 0) {
+  gseaplot2(gse, geneSetID = 1)
+}
